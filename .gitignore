@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.netlify/
+.firebase/
+.firebaserc/
+
+# System
+Thumbs.db
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+
+# User data
+ESKI_DOSYALAR/
+*.zip
+*.log
+.env.local
+reports/
+BACKUP_20260330_0539/
+BACKUP_20260402_0446/
+çeviri rapor farklı/
+
+local_keys.js

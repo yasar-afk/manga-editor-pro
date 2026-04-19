@@ -1,0 +1,11 @@
+services:
+  manga-editor-pro:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: manga-editor-pro
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.local
+    restart: unless-stopped

@@ -1,0 +1,390 @@
+ANTIGRAVITY / MANGA EDITOR PRO
+Gelistirici Notu, Test Dongusu ve Son Durum
+Guncelleme: 19 Nisan 2026
+
+1. Amac
+
+Bu dokuman, projeyi devralacak insan ya da yapay zekaya tek yerden referans
+vermek icin hazirlandi. Eski SaaS durum raporu, frontend notlari, backend
+duzeltmeleri ve yeni test dongusu burada birlestirildi.
+
+Bu notun amaci:
+- Mevcut mimariyi kisa ve net anlatmak
+- Son duzeltmeleri kaybetmemek
+- Test dongusunu standardize etmek
+- Ayni hatalara tekrar dusmemek
+
+
+2. Mevcut Mimari
+
+Proje iki ana parcadan olusuyor:
+
+- Frontend:
+  index.html
+  app2.js
+  styles2.css
+  admin.html
+  admin.js
+  cloud.js
+
+- Python backend:
+  backend/main.py
+  backend/ocr_engine.py
+  backend/image_processor.py
+  backend/translator.py
+  backend/requirements.txt
+
+Ana akis:
+- Gorsel yuklenir
+- OCR ile kutular bulunur
+- Kutulardaki metinler Turkceye cevrilir
+- Temiz gorsel ve kutu verisi uretilir
+- Frontend bunu ya duzenlenebilir overlay olarak gosterir ya da tuvale uygular
+
+
+3. Guvenlik ve Anahtarlar
+
+Guncel durum:
+- Gercek API anahtarlari artik tarayiciya gomulu degil
+- local_keys.js kaldirildi
+- API istekleri backend proxy veya backend process akisi uzerinden gidiyor
+- .env.local backend tarafinda kullaniliyor
+
+Kritik dosya:
+- .env.local
+
+Beklenen anahtarlar:
+- GEMINI_API_KEY
+- OPENROUTER_API_KEY
+
+
+4. Frontend Davranis Kurali
+
+Bu proje icin dogru davranis su:
+
+- "Metni Bul" butonu:
+  metni bulur, cevirir, kutulari overlay olarak gosterir
+
+- "Tumunu Cevir" butonu:
+  tum sayfalarda ceviriyi hazirlar
+  kutulari direkt gorsele gommemelidir
+  kullanici kutulari sonradan tasiyabilmelidir
+
+- "Gorsele Uygula" butonu:
+  son onay butonudur
+  metni ancak bu adimda kalici olarak sayfaya basar
+
+- Varsayilan kutu arka plani:
+  transparent olmali
+  beyaz arka plan zorla verilmemeli
+  kullanici isterse beyaz secmeli
+
+Bu davranis, kullanicinin acik istegidir. Bundan sonra buna aykiri degisiklik
+yapilmamali.
+
+
+5. Python Backend Durumu
+
+Backend su anda su endpointlerle calisiyor:
+
+- /api/health
+- /api/process
+- /api/gemini
+- /api/openrouter
+
+Onemli:
+- /api/process OCR + inpaint + ceviri pipeline'idir
+- Frontend test ve ana is akisinda bununla calisir
+
+Backend calistirma:
+- python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+
+6. OCR / Ceviri / Temizleme Durumu
+
+6.1 OCR
+
+backend/ocr_engine.py icinde:
+- OCR sonucunu normalize eden filtreler eklendi
+- Gurultu okumalarini atlayan kurallar var
+- Kisa anlamsiz okumalar ve SFX benzeri bazi cope yakin okumalar ayiklaniyor
+- Kutularin yakinlik bazli birlestirilmesi iyilestirildi
+
+Gozlenen fayda:
+- "ou obbu", "tav", "Oo" gibi sahte kutular azaldi
+- "HOW I AM" gibi iki parcali cumleler daha dogru toplaniyor
+
+Risk:
+- Bazi durumlarda agresif merge yanlis balonlari birlestirebilir
+- Kisa ama gercek metinler fazla filtrelenirse kayip olabilir
+
+
+6.2 Ceviri
+
+backend/translator.py icinde:
+- JSON parse kurtarma eklendi
+- Parse kirilsa bile ikinci deneme ile toparlama var
+- Son turda prompt kisaltildi
+
+Yeni ceviri kurali:
+- Dogal ama kisa Turkce
+- Balona sigacak kadar oz yazi
+- Gereksiz kelime ekleme yok
+
+Gozlenen fayda:
+- Rapor testinde cok satirli kutu sayisi 6'dan 2'ye dustu
+
+Kalan sorun:
+- Asiri uzun bagiris veya aciklama cumlelerinde hala 5 satira cikan kutular var
+
+
+6.3 Temizleme / Inpaint
+
+backend/image_processor.py icinde:
+- Padding dusuruldu
+- Agresif dikdortgen doldurma kaldirildi
+- Inpaint radius dusuruldu
+
+Ama ana karar:
+- Backend'den donen "temizlenmis gorsel" dogrudan son gorsel olarak kabul edilmemeli
+- Cunku bazi sayfalarda beyaz leke ve tasma uretebiliyor
+
+Dogru kullanim:
+- Oto-Temizle gibi yardimci akislarda kontrollu kullan
+- Final kalite icin overlay + manuel onay yaklasimi daha guvenli
+
+
+7. Test Sistemi
+
+Bu projede artik gelistirme goz karariyla degil, rapor bazli yapiliyor.
+
+Ana test araci:
+- batch_manga_test.py
+
+Amaci:
+- Verilen manga sayfalarini otomatik islemek
+- Original / clean / rendered uretmek
+- Kutulari ve olasi sorunlari raporlamak
+- Hatalari sayiya dokmek
+
+Urettigi dosyalar:
+- *_original.png
+- *_clean.png
+- *_rendered.png
+- *_web_sim.png
+- *_report.json
+- report.html
+
+Hazir preset:
+- lostend_4
+
+Hazir PowerShell baslatici:
+- run_lostend_test.ps1
+
+
+8. Standart Test Dongusu
+
+Yeni kural:
+- Kullanici tek tek gorsel atmak zorunda kalmamalidir
+- Her buyuk duzeltmeden sonra ayni 4 sayfa tekrar kosulmalidir
+- Yeni rapor onceki raporla karsilastirilmalidir
+
+Standart komut:
+
+python batch_manga_test.py --preset lostend_4 --out-dir reports\runs\lostend_4_tuned --background-mode transparent --render-mode web_sim
+
+veya
+
+powershell -ExecutionPolicy Bypass -File .\run_lostend_test.ps1
+
+Temel kalite gostergeleri:
+- error_code var mi
+- Ingilizce kalan kutu var mi
+- cok satirli kutu sayisi
+- dar kutu / dikey kirilma riski
+- temizlik agresifligi
+- web_sim ile ideal render arasinda sapma var mi
+
+
+9. Son Test Sonuclari
+
+Karsilastirma:
+
+Eski durum:
+- 08: 1 cok satirli kutu
+- 09: 2 cok satirli kutu
+- 10: 1 cok satirli kutu
+- 11: 2 cok satirli kutu
+
+Son duzeltmeden sonra:
+- 08: 1 cok satirli kutu
+- 09: 0
+- 10: 1
+- 11: 0
+
+Toplam:
+- 6 problemli kutu -> 2 problemli kutu
+
+Bu iyi ilerleme ama hedeflenen kalite degil.
+
+Bir sonraki tur:
+- reports\runs\lostend_4_next
+
+Bu turdaki sonuc:
+- 08: 0
+- 09: 0
+- 10: 0
+- 11: 0
+
+Toplam:
+- 2 problemli kutu -> 0 problemli kutu
+
+Not:
+- Rapor artik kritik satir kirilmasi vermiyor.
+- Bu, test dongusunde ilk temiz rapordur.
+- Yine de final karar yalniz rapora bakilarak verilmemeli; gorsel dogallik da kontrol edilmelidir.
+
+
+10. En Son Yapilan Duzeltmeler
+
+Bu bolum hafiza kaybina karsi ozet kayittir.
+
+Son turda yapilanlar:
+
+- backend/translator.py
+  ceviri promptu "kisa, balona sigan Turkce" olacak sekilde degistirildi
+
+- batch_manga_test.py
+  get_display_box daha agresif kutu genisletiyor
+  fit_text_layout daha dusuk minimum fonta inebiliyor
+  yatay sigdirmaya daha fazla oncelik veriyor
+
+- app2.js
+  getDisplayBox frontend tarafa da ayni mantikla tasindi
+  fitTextLayout frontend tarafinda da daha esnek hale getirildi
+  varsayilan bgColor tekrar transparent yapildi
+  Tumunu Cevir sonrasi kutular direkt gorsele basilmiyor
+  kutular oynatilabilir olarak kalmaya devam ediyor
+
+- index.html
+  script cache bust versiyonu artirildi
+
+Yeni son turda yapilanlar:
+
+- backend/translator.py
+  dar veya uzun balonlar icin ikinci asama otomatik kisaltma eklendi
+  ceviri ilk turdan sonra hala uzun kaliyor ise modele tekrar "daha kisa" varyant uretiliyor
+
+- batch_manga_test.py
+  orta-dar ama cok uzun metinlerde ek kutu genisletme eklendi
+  minimum font alt siniri bir kademe daha esnetildi
+
+- app2.js
+  ayni kutu genisletme esigi frontend'e de tasindi
+  fitTextLayout minimum font esigi test araci ile uyumlu hale getirildi
+
+- test sonucu
+  lostend_4_next raporunda 4 sayfanin tamaminda kritik finding sifirlandi
+
+- web uyum duzeltmesi
+  test araci ile web arasi akis farki kapatildi
+  Python backend sonucu geldiginde temizlenmis gorsel artik web canvas'ina da yukleniyor
+  overlay kutularinin tasinan ve boyutlanan hali veri modeline geri yaziliyor
+  eski CSS'teki zorunlu uppercase ve agir beyaz text-shadow kaldirildi
+
+- test araci web simulasyonu
+  batch_manga_test.py icine web_sim render modu eklendi
+  bu mod app2.js icindeki kutu genisletme ve font fit mantigini taklit ediyor
+  rapor artik varsayilan olarak ideal degil web davranisini analiz etmeli
+
+- son kalite turu
+  kisa tepki metinleri icin sabit guvenli ceviri kurali eklendi
+  ornek: OW -> Ah!, TSKW -> Cik!
+  batch_manga_test.py icine estetik risk ve tepki kalitesi kontrolu eklendi
+  translator.py icine kisa kaliplar icin post-process kisaltma eklendi
+  app2.js ve batch_manga_test.py tarafinda orta-dar balonlar icin ek genisletme ve daha dusuk padding eklendi
+  lostend_4_websim_iter2 raporunda 08/09/10/11 icin finding sifirlandi
+
+
+11. Tekrar Yapilmamasi Gereken Hatalar
+
+Asagidaki hatalar tekrar edilmemeli:
+
+- Tumunu Cevir sonrasinda metni hemen gorsele gommek
+- Varsayilan balon arka planini zorla beyaz yapmak
+- Backend inpaint sonucunu her durumda final sayfa kabul etmek
+- Kullanicinin kutulari tasima hakkini elinden almak
+- Sadece goruntuye bakip karar vermek, rapora bakmamak
+
+
+12. Bundan Sonraki Gelistirme Sirasi
+
+Mevcut durumda rapor temiz oldugu icin sonraki hedefler kalite odaklidir:
+
+- Gorsel dogalligi insan gozuyle kontrol etmek
+- Ceviri tonunun fazla kisalma nedeniyle anlam kaybedip kaybetmedigini izlemek
+- Temizleme katmaninin bazi sayfalarda fazla iz birakip birakmadigini ayri not etmek
+- Yeni sayfa setlerinde ayni sonuc korunuyor mu diye preset testlerini genisletmek
+
+
+13. Durma Kriteri
+
+Bu dongu ne zaman durur:
+
+- Benim gozumden kalite 10 uzerinden en az 9 oldugunda
+- Test raporunda kritik satir kirilma problemi kalmadiginda
+- Gorsel kalite "elle duzeltmeden de kullanilabilir" seviyeye geldiginde
+
+Not:
+- lostend_4_websim_iter2 raporuna gore hem web_sim findingleri sifirlandi hem de kisa tepki/estetik kontrolleri temiz gecildi.
+- Bu set icin kalite hedefi pratikte saglanmis kabul edilebilir.
+
+
+14. Kisa Kullanici Onerisi
+
+Kullanimda su sira en guvenli akış:
+
+- Metni Bul
+- Kutulari kontrol et
+- Gerekirse tası
+- Gerekirse arka plan rengini elle sec
+- En son Gorsele Uygula
+
+Tumunu Cevir su an yardimci bir hazirlama modudur, son onay modu degildir.
+
+
+15. Bu Notun Bakim Kurali
+
+Her anlamli duzeltmeden sonra su 3 sey guncellenmeli:
+
+- Bu dosyadaki "En Son Yapilan Duzeltmeler" bolumu
+- reports\runs altindaki yeni rapor klasoru
+- Gerekirse standart test komutu
+
+Bu sayede hafiza siniri gelse bile proje durumu kaybolmaz.
+2026-04-19 - Diyalog balonu temizleme arastirma turu
+- Internet arastirmasindan cikan ana ders: kalite farkini aslen inpaint algoritmasindan cok maske kalitesi yaratiyor.
+- Uygulanan iyilestirme: backend/image_processor.py icine OCR kutusuna yakin beyaz balon bileseni secimi eklendi.
+- Yeni akis: once beyaz balon maskesi, sonra sadece o maskenin icindeki koyu yazi maskesi, sonra kenardan geri cekilmis guvenli alan.
+- Text maskesi Otsu + adaptive threshold + blackhat birlesimiyle guclendirildi.
+- Balon kenarina yapisan ve disariya tasan komponentler daha agresif eleniyor.
+- Inpaint secimi maske oranina gore adaptif yapildi:
+- kucuk maskelerde Telea
+- daha buyuk maskelerde Navier-Stokes
+- Bu turdaki amac: kutuyu komple beyazlatmak yerine balon icindeki harf piksellerini daha guvenli silmek.
+
+2026-04-19 - Hibrit temizleme denemesi
+- Kullanicidan gelen geri bildirim: backend temizliginden sonra balonlara bir kez sihirli degnek uygulaninca sonuc daha iyi gorunuyor.
+- Uygulanan cozum: app2.js icine runMagicWandFinishPass() eklendi.
+- Yeni akis: backend temizligi bittikten sonra tespit edilen balon kutularinda son bir yerel magic wand rottusu calisiyor.
+- Bu final pas sadece yeterince parlak merkezlerde calisiyor; koyu/gorsel ustu alanlari gecmeye calisiyor.
+
+2026-04-19 - Balon ici yerlesim ve olcek iyilestirmesi
+- Web tarafinda fitTextLayout, maksimum font secmek yerine skorlamali aday secimine cevrildi.
+- Yeni metrikler: fill_ratio_w, fill_ratio_h, layoutScore, lineCount, widowPenalty, balloonShapePenalty.
+- getDisplayBox artik balloon_inner_percent > safe_box_percent > balloon_percent > box_percent sirasiyla kutu seciyor.
+- Display kutularina ek inset veriliyor; metin balon kenarina yapismasin diye yatay/dikey marjlar buyutuldu.
+- Export parity icin apply sirasinda is_display_box isareti eklendi; kayit sirasinda kutu ikinci kez daraltilmiyor.
+- Backend artik balloon_percent ve balloon_inner_percent donuyor.
+- batch_manga_test.py ayni layout mantigina tasindi; rapora yeni kalite alanlari eklendi.
+- Yeni test turu: reports/runs/lostend_4_layout_iter/report.html
